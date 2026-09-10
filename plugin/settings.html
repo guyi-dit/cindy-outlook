@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="/settings.css">
+</head>
+<body>
+  <div class="title">Outlook 账号 <span class="badge">独立授权</span></div>
+  <p class="hint">支持 Hotmail、Outlook.com、Live。只申请邮件读写与发送权限，不会读取 OneDrive / 日历。</p>
+  <div class="setup">
+    <p class="setup-title">首次连接前需要 Azure 应用 ID</p>
+    <p class="hint">Cindy 官方还没有 Microsoft 应用身份，所以要用你的 Hotmail 免费注册一个「公共客户端」：</p>
+    <ol>
+      <li>打开 Azure 应用注册：https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade</li>
+      <li>新注册。帐户类型选「仅个人 Microsoft 帐户」。重定向 URI 先可留空。</li>
+      <li>打开「清单 / Manifest」，在 replyUrlsWithType 里加入：
+        <code>{"url":"http://127.0.0.1:53683/callback","type":"InstalledClient"}</code>
+      </li>
+      <li>同一清单里把 allowPublicClient 设为 true。</li>
+      <li>复制 Overview 页的 Application (client) ID，在本插件目录运行
+        <code>python3 scripts/set-client-id.py &lt;client-id&gt;</code>
+        然后在 Cindy 插件市场刷新「我的插件」。</li>
+    </ol>
+  </div>
+  <p id="reauth" class="hint expired" hidden></p>
+  <div id="accounts"></div>
+  <button id="connect" class="primary" type="button">连接账号</button>
+  <p id="status"></p>
+  <script src="/settings.js"></script>
+</body>
+</html>

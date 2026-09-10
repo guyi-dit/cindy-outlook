@@ -1,0 +1,152 @@
+{
+  "schemaVersion": 2,
+  "id": "microsoft-outlook",
+  "name": "Outlook",
+  "description": "独立连接 Hotmail / Outlook.com / Live：搜索、阅读、列文件夹、存草稿、发送和删除邮件。只申请邮件权限，授权由 Cindy 托管。发送和删除必须用户明确表达。",
+  "whenToUse": "需要查 Hotmail / Outlook.com 邮件、读取正文、列文件夹、存草稿、发送或删除邮件时使用。请先在本插件详情页点「连接账号」，用 Hotmail 登录。",
+  "version": "1.2.0",
+  "locales": {
+    "en": "locales/en.json",
+    "zh-CN": "locales/zh-CN.json",
+    "ja": "locales/ja.json",
+    "ko": "locales/ko.json"
+  },
+  "author": "GT",
+  "icon": "assets/icon.png",
+  "entry": "main.js",
+  "settingsHtml": "settings.html",
+  "slots": [
+    "tool",
+    "network"
+  ],
+  "command": "microsoft-outlook",
+  "keywords": [
+    "outlook",
+    "hotmail",
+    "email",
+    "mail"
+  ],
+  "setup": {
+    "requires": [
+      {
+        "anyOf": [
+          "secret:outlook_account"
+        ]
+      }
+    ]
+  },
+  "network": {
+    "hosts": [
+      "login.microsoftonline.com",
+      "graph.microsoft.com"
+    ],
+    "secrets": [
+      {
+        "key": "outlook_account",
+        "label": "Outlook 账号",
+        "source": "oauth",
+        "hint": "先按说明注册 Azure 公共客户端并把 clientId 写入 ghost.json，再到本插件详情页点「连接账号」",
+        "inject": {
+          "header": "Authorization",
+          "format": "Bearer {value}",
+          "hosts": [
+            "graph.microsoft.com"
+          ]
+        },
+        "oauth": {
+          "authorizeUrl": "https://login.microsoftonline.com/consumers/oauth2/v2.0/authorize",
+          "tokenUrl": "https://login.microsoftonline.com/consumers/oauth2/v2.0/token",
+          "pkce": true,
+          "redirectPort": 53683,
+          "scopes": [
+            "openid",
+            "offline_access",
+            "User.Read",
+            "Mail.Read",
+            "Mail.ReadWrite",
+            "Mail.Send"
+          ],
+          "extraAuthorizeParams": {
+            "prompt": "select_account"
+          },
+          "identity": {
+            "url": "https://graph.microsoft.com/v1.0/me",
+            "labelPath": "userPrincipalName"
+          },
+          "clientId": "1f2de5e1-e29c-426c-b275-5fe484a5ebfd"
+        }
+      }
+    ]
+  },
+  "tools": [
+    {
+      "name": "outlook_accounts",
+      "description": "列出本插件已连接的 Outlook / Hotmail 账号及状态。账号必须先在 Outlook 插件详情页点「连接账号」授权。",
+      "parameters": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "outlook",
+      "description": "执行 Outlook 邮件操作：search 搜索或列出最近邮件，read 读取正文，list_folders 列文件夹，draft 存草稿，send 发送，delete 删除。发送和删除必须由用户明确表达。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "search",
+              "read",
+              "delete",
+              "send",
+              "draft",
+              "list_folders"
+            ]
+          },
+          "account": {
+            "type": "string",
+            "description": "账号 id；省略使用本插件默认账号"
+          },
+          "query": {
+            "type": "string",
+            "description": "search 关键词或 KQL，如 from:someone@hotmail.com subject:发票。省略则列出最近邮件"
+          },
+          "folder": {
+            "type": "string",
+            "description": "可选文件夹 id 或常用名：inbox / drafts / sentitems / deleteditems / junkemail / archive"
+          },
+          "max_results": {
+            "type": "number",
+            "description": "search 返回条数，默认 5，最大 10"
+          },
+          "message_id": {
+            "type": "string",
+            "description": "read / delete 使用的邮件 id"
+          },
+          "to": {
+            "type": "string",
+            "description": "send/draft 收件人，多个用逗号分隔"
+          },
+          "cc": {
+            "type": "string",
+            "description": "可选抄送，多个用逗号分隔"
+          },
+          "bcc": {
+            "type": "string",
+            "description": "可选密送，多个用逗号分隔"
+          },
+          "subject": {
+            "type": "string"
+          },
+          "body_text": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "action"
+        ]
+      }
+    }
+  ]
+}

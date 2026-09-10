@@ -1,0 +1,13 @@
+{
+  "name": "Outlook",
+  "description": "Hotmail / Outlook.com / Live を個別接続し、検索・閲覧・フォルダー一覧・下書き・送信・削除ができます。メール権限のみ要求し、認可は Cindy が管理します。送信と削除には明確な指示が必要です。",
+  "whenToUse": "Hotmail / Outlook.com の検索、本文閲覧、フォルダー一覧、下書き、送信、削除に使います。先にこのプラグイン詳細で「アカウントを接続」してください。",
+  "tools": {
+    "outlook_accounts": {
+      "description": "このプラグインに接続済みの Outlook / Hotmail アカウントと状態を一覧します。先に詳細画面で接続してください。"
+    },
+    "outlook": {
+      "description": "Outlook 操作：検索または最近のメール一覧、本文閲覧、フォルダー一覧、下書き保存、送信、削除。送信と削除には明確な意図が必要です。"
+    }
+  }
+}

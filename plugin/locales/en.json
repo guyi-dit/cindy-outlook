@@ -1,0 +1,13 @@
+{
+  "name": "Outlook",
+  "description": "Connect Hotmail / Outlook.com / Live independently to search, read, list folders, draft, send, and delete mail. Only mail permissions are requested; Cindy hosts authorization. Sending and deleting require explicit user intent.",
+  "whenToUse": "Use this plugin to search Hotmail / Outlook.com, read bodies, list folders, save drafts, send, or delete mail. First connect Hotmail on this plugin details page.",
+  "tools": {
+    "outlook_accounts": {
+      "description": "List Outlook / Hotmail accounts connected to this plugin and their status. Authorize first on the Outlook plugin details page."
+    },
+    "outlook": {
+      "description": "Run Outlook mail operations: search or list recent messages, read, list folders, save drafts, send, or delete. Sending and deleting require explicit user intent."
+    }
+  }
+}
