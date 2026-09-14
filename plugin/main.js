@@ -30,6 +30,122 @@ function messagesUrl(folder) {
   return BASE + '/mailFolders/' + encodeURIComponent(String(folder).trim()) + '/messages';
 }
 
+
+var FOLDER_SELECT = 'id,displayName,totalItemCount,unreadItemCount,childFolderCount,parentFolderId';
+var WELL_KNOWN = {
+  inbox: 'inbox',
+  drafts: 'drafts',
+  sentitems: 'sentitems',
+  deleteditems: 'deleteditems',
+  junkemail: 'junkemail',
+  archive: 'archive',
+  outbox: 'outbox',
+};
+
+function looksLikeGraphId(value) {
+  return /^[A-Za-z0-9+/=_-]{20,}$/.test(value);
+}
+
+async function listFolderPage(url, account, callId) {
+  var items = [];
+  var next = url;
+  var guard = 0;
+  while (next && guard < 20) {
+    guard += 1;
+    var res = await api({ url: next, account: account, callId: callId });
+    if (res.err) return res;
+    var page = (res.data && res.data.value) || [];
+    for (var i = 0; i < page.length; i++) items.push(page[i]);
+    next = res.data && res.data['@odata.nextLink'] ? res.data['@odata.nextLink'] : '';
+  }
+  return { items: items };
+}
+
+async function collectFolders(account, callId) {
+  var root = await listFolderPage(
+    BASE + '/mailFolders?' + qs({ $top: 50, $select: FOLDER_SELECT }),
+    account,
+    callId
+  );
+  if (root.err) return root;
+  var out = [];
+  async function walk(folder, parentPath) {
+    var name = folder.displayName || '';
+    var path = parentPath ? parentPath + '/' + name : name;
+    out.push({
+      id: folder.id,
+      name: name,
+      path: path,
+      parent_id: folder.parentFolderId || '',
+      total: folder.totalItemCount,
+      unread: folder.unreadItemCount,
+      child_folders: folder.childFolderCount || 0,
+    });
+    if ((folder.childFolderCount || 0) > 0 && out.length < 400) {
+      var kids = await listFolderPage(
+        BASE + '/mailFolders/' + encodeURIComponent(folder.id) + '/childFolders?' +
+          qs({ $top: 50, $select: FOLDER_SELECT }),
+        account,
+        callId
+      );
+      if (kids.err) return kids;
+      for (var i = 0; i < kids.items.length; i++) {
+        var walked = await walk(kids.items[i], path);
+        if (walked && walked.err) return walked;
+      }
+    }
+    return null;
+  }
+  for (var i = 0; i < root.items.length; i++) {
+    var err = await walk(root.items[i], '');
+    if (err && err.err) return err;
+  }
+  return { folders: out };
+}
+
+async function resolveFolder(spec, account, callId) {
+  var raw = String(spec || '').trim();
+  if (!raw) return { err: 'folder 不能为空' };
+  var key = raw.toLowerCase();
+  if (WELL_KNOWN[key]) {
+    return { id: WELL_KNOWN[key], name: WELL_KNOWN[key], path: WELL_KNOWN[key] };
+  }
+  if (looksLikeGraphId(raw)) {
+    return { id: raw, name: raw, path: raw };
+  }
+  var listed = await collectFolders(account, callId);
+  if (listed.err) return listed;
+  var folders = listed.folders || [];
+  function candidates(pred) {
+    return folders.filter(pred);
+  }
+  var exactId = candidates(function (f) { return f.id === raw; });
+  if (exactId.length === 1) return exactId[0];
+  var byPath = candidates(function (f) {
+    return f.path === raw || (f.path && f.path.toLowerCase() === key);
+  });
+  if (byPath.length === 1) return byPath[0];
+  var byName = candidates(function (f) { return f.name === raw; });
+  if (byName.length === 1) return byName[0];
+  if (byName.length > 1) {
+    return {
+      err: '文件夹名「' + raw + '」有多个匹配，请改用 path：' +
+        byName.map(function (f) { return f.path; }).join('、'),
+    };
+  }
+  var contains = candidates(function (f) {
+    return (f.name && f.name.indexOf(raw) !== -1) || (f.path && f.path.indexOf(raw) !== -1);
+  });
+  if (contains.length === 1) return contains[0];
+  if (contains.length > 1) {
+    return {
+      err: '文件夹「' + raw + '」不唯一，请改用 path：' +
+        contains.map(function (f) { return f.path; }).join('、'),
+    };
+  }
+  return { err: '找不到文件夹「' + raw + '」。先 list_folders 查看 path / id' };
+}
+
 async function api(opts) {
   var request = {
     url: opts.url,
@@ -192,17 +308,25 @@ async function outlook(args, callId) {
   if (args.action === 'search') {
     var top = clampInt(args.max_results, 5, 10);
     var query = args.query ? String(args.query).trim() : '';
+    var folderId;
+    if (args.folder) {
+      var resolvedSearch = await resolveFolder(args.folder, account, callId);
+      if (resolvedSearch.err) return fail(resolvedSearch.err);
+      folderId = resolvedSearch.id;
+    } else if (!query) {
+      folderId = 'inbox';
+    }
     var url;
     if (query) {
       var kql = query.replace(/"/g, '').trim();
       if (!kql) return fail('search 的 query 不能为空');
-      url = messagesUrl(args.folder) + '?' + qs({
+      url = messagesUrl(folderId) + '?' + qs({
         $search: '"' + kql + '"',
         $top: top,
         $select: SELECT_LIST,
       });
     } else {
-      url = messagesUrl(args.folder || 'inbox') + '?' + qs({
+      url = messagesUrl(folderId) + '?' + qs({
         $top: top,
         $orderby: 'receivedDateTime desc',
         $select: SELECT_LIST,
@@ -250,27 +374,12 @@ async function outlook(args, callId) {
   }
 
   if (args.action === 'list_folders') {
-    var folders = await api({
-      url: BASE + '/mailFolders?' + qs({
-        $top: 50,
-        $select: 'id,displayName,totalItemCount,unreadItemCount,childFolderCount',
-      }),
-      account: account,
-      callId: callId,
-    });
-    if (folders.err) return fail(folders.err);
+    var collected = await collectFolders(account, callId);
+    if (collected.err) return fail(collected.err);
     return {
       ok: true,
       result: {
-        folders: ((folders.data && folders.data.value) || []).map(function (folder) {
-          return {
-            id: folder.id,
-            name: folder.displayName,
-            total: folder.totalItemCount,
-            unread: folder.unreadItemCount,
-            child_folders: folder.childFolderCount,
-          };
-        }),
+        folders: collected.folders || [],
         well_known: ['inbox', 'drafts', 'sentitems', 'deleteditems', 'junkemail', 'archive'],
       },
     };
@@ -298,11 +407,13 @@ async function outlook(args, callId) {
   if (args.action === 'move') {
     if (!args.message_id) return fail('move 需要 message_id');
     var dest = args.folder ? String(args.folder).trim() : '';
-    if (!dest) return fail('move 需要 folder（目标文件夹 id 或常用名，如 inbox / drafts / deleteditems / archive）');
+    if (!dest) return fail('move 需要 folder（目标文件夹名称、path 或 id，例如 富途 或 收件箱/富途）');
+    var resolved = await resolveFolder(dest, account, callId);
+    if (resolved.err) return fail(resolved.err);
     var moved = await api({
       url: BASE + '/messages/' + encodeURIComponent(args.message_id) + '/move',
       method: 'POST',
-      body: { destinationId: dest },
+      body: { destinationId: resolved.id },
       account: account,
       callId: callId,
     });
@@ -312,7 +423,8 @@ async function outlook(args, callId) {
       result: {
         moved: true,
         id: moved.data && moved.data.id ? moved.data.id : args.message_id,
-        destination: dest,
+        destination: resolved.path || resolved.name || dest,
+        destination_id: resolved.id,
         subject: moved.data && moved.data.subject ? moved.data.subject : undefined,
       },
     };
