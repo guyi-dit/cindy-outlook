@@ -295,6 +295,29 @@ async function outlook(args, callId) {
     };
   }
 
+  if (args.action === 'move') {
+    if (!args.message_id) return fail('move 需要 message_id');
+    var dest = args.folder ? String(args.folder).trim() : '';
+    if (!dest) return fail('move 需要 folder（目标文件夹 id 或常用名，如 inbox / drafts / deleteditems / archive）');
+    var moved = await api({
+      url: BASE + '/messages/' + encodeURIComponent(args.message_id) + '/move',
+      method: 'POST',
+      body: { destinationId: dest },
+      account: account,
+      callId: callId,
+    });
+    if (moved.err) return fail(moved.err);
+    return {
+      ok: true,
+      result: {
+        moved: true,
+        id: moved.data && moved.data.id ? moved.data.id : args.message_id,
+        destination: dest,
+        subject: moved.data && moved.data.subject ? moved.data.subject : undefined,
+      },
+    };
+  }
+
   if (args.action === 'send' || args.action === 'draft') {
     if (!args.to || args.subject === undefined || args.body_text === undefined) {
       return fail(args.action + ' 需要 to / subject / body_text');
