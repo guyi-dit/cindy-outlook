@@ -2,9 +2,9 @@
   "schemaVersion": 2,
   "id": "microsoft-outlook",
   "name": "Outlook",
-  "description": "独立连接 Hotmail / Outlook.com / Live：搜索、阅读、列文件夹（含子文件夹）、按名称移动、存草稿、发送和删除邮件。只申请邮件权限。发送、删除和移动必须用户明确表达。",
-  "whenToUse": "需要查 Hotmail / Outlook.com 邮件、读取正文、把邮件移到子文件夹、列文件夹、存草稿、发送或删除时使用。请先在本插件详情页点「连接账号」。",
-  "version": "1.4.0",
+  "description": "独立连接 Hotmail / Outlook.com / Live：搜索、阅读、列文件夹、移动、存草稿、发送、删除，以及列出/下载附件、发信带附件。只申请邮件权限。发送、删除和移动必须用户明确表达。",
+  "whenToUse": "需要查 Hotmail 邮件、读正文、移动、删信、下载附件，或把你发来的文件作为邮件附件发出时使用。请先在插件详情页连接账号。",
+  "version": "1.5.0",
   "locales": {
     "en": "locales/en.json",
     "zh-CN": "locales/zh-CN.json",
@@ -17,7 +17,8 @@
   "settingsHtml": "settings.html",
   "slots": [
     "tool",
-    "network"
+    "network",
+    "fs"
   ],
   "command": "microsoft-outlook",
   "keywords": [
@@ -89,7 +90,7 @@
     },
     {
       "name": "outlook",
-      "description": "执行 Outlook 邮件操作：search 搜索或列出最近邮件，read 读取正文，list_folders 列出全部文件夹（含 path/id 和子文件夹），move 按文件夹名称/path/id 移动邮件，draft 存草稿，send 发送，delete 删除。发送、删除和移动必须由用户明确表达。",
+      "description": "Outlook 邮件操作：search / read / list_folders / move / draft / send / delete / list_attachments / download_attachment。下载附件需 ghost_call 顶层 save_dir；发信带附件需顶层 dir 过户本地文件。发送、删除和移动必须用户明确表达。",
       "parameters": {
         "type": "object",
         "properties": {
@@ -102,7 +103,9 @@
               "move",
               "send",
               "draft",
-              "list_folders"
+              "list_folders",
+              "list_attachments",
+              "download_attachment"
             ]
           },
           "account": {
@@ -123,7 +126,7 @@
           },
           "message_id": {
             "type": "string",
-            "description": "read / delete / move 使用的邮件 id"
+            "description": "read / delete / move / list_attachments / download_attachment 使用的邮件 id"
           },
           "to": {
             "type": "string",
@@ -142,6 +145,14 @@
           },
           "body_text": {
             "type": "string"
+          },
+          "attachment_id": {
+            "type": "string",
+            "description": "download_attachment 使用的附件 id，来自 list_attachments"
+          },
+          "filename": {
+            "type": "string",
+            "description": "download_attachment 可选保存文件名"
           }
         },
         "required": [

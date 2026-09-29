@@ -1,13 +1,13 @@
 {
   "name": "Outlook",
-  "description": "Connect Hotmail / Outlook.com / Live to search, read, list nested folders, move by folder name, draft, send, and delete mail. Sending, deleting, and moving require explicit user intent.",
-  "whenToUse": "Use this plugin to search, read, move into nested folders, list folders, draft, send, or delete Hotmail / Outlook.com mail. Connect an account on the plugin details page first.",
+  "description": "Connect Hotmail / Outlook.com / Live to search, read, move, draft, send, delete, list/download attachments, and send files you attach. Sending, deleting, and moving require explicit user intent.",
+  "whenToUse": "Use this plugin to search Hotmail, read mail, download attachments, or send a message with files you provided. Connect an account on the plugin details page first.",
   "tools": {
     "outlook_accounts": {
-      "description": "List Outlook / Hotmail accounts connected to this plugin and their status."
+      "description": "List connected Outlook / Hotmail accounts."
     },
     "outlook": {
-      "description": "Run Outlook mail operations including list_folders with nested path/id and move by folder name, path, or id. Sending, deleting, and moving require explicit user intent."
+      "description": "Outlook mail operations including list_attachments and download_attachment (needs save_dir). Sending files requires ghost_call dir handover. Sending, deleting, and moving require explicit user intent."
     }
   }
 }

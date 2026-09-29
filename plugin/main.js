@@ -150,17 +150,28 @@ async function api(opts) {
   var request = {
     url: opts.url,
     method: opts.method || 'GET',
-    headers: { Accept: 'application/json' },
+    headers: { Accept: opts.as === 'file' ? '*/*' : 'application/json' },
     callId: opts.callId,
   };
   if (opts.preferText) request.headers.Prefer = 'outlook.body-content-type="text"';
   if (opts.account) request.authAccount = opts.account;
+  if (opts.as) request.as = opts.as;
+  if (opts.saveTo) request.saveTo = opts.saveTo;
+  if (opts.timeoutMs) request.timeoutMs = opts.timeoutMs;
   if (opts.body !== undefined) {
     request.headers['Content-Type'] = 'application/json';
     request.body = JSON.stringify(opts.body);
   }
   var response = await cindy.fetch(request);
   if (!response.ok) return { err: response.message };
+  if (opts.as === 'file') {
+    if (response.status < 200 || response.status >= 300) {
+      return { err: 'Outlook API 返回 HTTP ' + response.status };
+    }
+    if (!response.file) return { err: '未返回文件' };
+    return { file: response.file };
+  }
+
   var data = null;
   if (response.body) {
     try {
@@ -303,6 +314,128 @@ function buildMessage(args) {
   return { ok: message };
 }
 
+function extractHash(s) {
+  if (typeof s !== 'string') return null;
+  var m = s.match(/[0-9a-f]{64}/);
+  return m ? m[0] : null;
+}
+
+function guessMime(name) {
+  var lower = String(name || '').toLowerCase();
+  if (lower.endsWith('.pdf')) return 'application/pdf';
+  if (lower.endsWith('.png')) return 'image/png';
+  if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg';
+  if (lower.endsWith('.gif')) return 'image/gif';
+  if (lower.endsWith('.webp')) return 'image/webp';
+  if (lower.endsWith('.txt')) return 'text/plain';
+  if (lower.endsWith('.csv')) return 'text/csv';
+  if (lower.endsWith('.html') || lower.endsWith('.htm')) return 'text/html';
+  if (lower.endsWith('.json')) return 'application/json';
+  if (lower.endsWith('.zip')) return 'application/zip';
+  if (lower.endsWith('.doc')) return 'application/msword';
+  if (lower.endsWith('.docx')) return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+  if (lower.endsWith('.xls')) return 'application/vnd.ms-excel';
+  if (lower.endsWith('.xlsx')) return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+  if (lower.endsWith('.ppt')) return 'application/vnd.ms-powerpoint';
+  if (lower.endsWith('.pptx')) return 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+  return 'application/octet-stream';
+}
+
+function bytesToBase64(text) {
+  if (typeof text !== 'string') return '';
+  var bytes = new Uint8Array(text.length);
+  for (var i = 0; i < text.length; i++) bytes[i] = text.charCodeAt(i) & 255;
+  var binary = '';
+  for (var j = 0; j < bytes.length; j++) binary += String.fromCharCode(bytes[j]);
+  return btoa(binary);
+}
+
+function summarizeAttachment(item) {
+  return {
+    id: item.id,
+    name: item.name || '',
+    content_type: item.contentType || '',
+    size: item.size || 0,
+    is_inline: !!item.isInline,
+    type: item['@odata.type'] || '',
+  };
+}
+
+async function listMessageAttachments(messageId, account, callId) {
+  var listed = await api({
+    url: BASE + '/messages/' + encodeURIComponent(messageId) +
+      '/attachments?' + qs({ $select: 'id,name,contentType,size,isInline' }),
+    account: account,
+    callId: callId,
+  });
+  if (listed.err) return listed;
+  return { attachments: ((listed.data && listed.data.value) || []).map(summarizeAttachment) };
+}
+
+function basenamePath(p) {
+  var s = String(p || '').replace(/\\\\/g, '/');
+  var parts = s.split('/');
+  if (parts.length === 1) parts = s.split('\\');
+  return parts[parts.length - 1] || 'attachment';
+}
+
+async function readWorkdirFile(rel, callId) {
+  if (!callId) return { err: '读取本地附件需要 callId' };
+  var w = await cindy.send({
+    type: 'fs-request',
+    op: 'read',
+    root: 'workdir',
+    path: rel,
+    callId: callId,
+  });
+  if (!w || !w.ok) return { err: (w && w.message) ? w.message : '无法读取工作目录文件 ' + rel };
+  var content = w.content;
+  var b64 = '';
+  if (typeof w.content_base64 === 'string' && w.content_base64) {
+    b64 = w.content_base64;
+  } else if (typeof content === 'string') {
+    b64 = bytesToBase64(content);
+  } else {
+    return { err: '文件 ' + rel + ' 没有可读内容' };
+  }
+  var name = basenamePath(w.path || rel);
+  var size = typeof w.bytes === 'number' ? w.bytes : Math.floor(b64.length * 0.75);
+  if (size > 3 * 1024 * 1024) {
+    return { err: name + ' 超过 3MB，当前发信附件只支持 3MB 以内的文件' };
+  }
+  return {
+    ok: {
+      '@odata.type': '#microsoft.graph.fileAttachment',
+      name: name,
+      contentType: guessMime(name),
+      contentBytes: b64,
+    },
+    name: name,
+  };
+}
+
+async function collectOutboundAttachments(args, callId) {
+  var files = [];
+  var names = [];
+  var rels = (args.dir_deposit && Array.isArray(args.dir_deposit.rel_paths))
+    ? args.dir_deposit.rel_paths : [];
+  for (var i = 0; i < rels.length; i++) {
+    var rel = String(rels[i] || '').replace(/^\/+/, '');
+    if (!rel) continue;
+    var got = await readWorkdirFile(rel, callId);
+    if (got.err) return got;
+    files.push(got.ok);
+    names.push(got.name);
+  }
+  var granted = Array.isArray(args.attachments) ? args.attachments : [];
+  if (!files.length && granted.length) {
+    return {
+      err: '聊天附件需要主 agent 把文件目录放在 ghost_call 顶层 dir 过户（dir_deposit）。仅传 attachments 指纹时无法读取字节，Graph 发信需要文件内容',
+    };
+  }
+  return { files: files, names: names };
+}
+
 async function outlook(args, callId) {
   var account = args.account;
   if (args.action === 'search') {
@@ -355,6 +488,11 @@ async function outlook(args, callId) {
     });
     if (full.err) return fail(full.err);
     var msg = full.data;
+    var att = { attachments: [] };
+    if (msg.hasAttachments) {
+      att = await listMessageAttachments(msg.id, account, callId);
+      if (att.err) return fail(att.err);
+    }
     return {
       ok: true,
       result: {
@@ -369,6 +507,7 @@ async function outlook(args, callId) {
         has_attachments: !!msg.hasAttachments,
         web_link: msg.webLink || '',
         body: extractBody(msg),
+        attachments: att.attachments || [],
       },
     };
   }
@@ -430,12 +569,58 @@ async function outlook(args, callId) {
     };
   }
 
+  if (args.action === 'list_attachments') {
+    if (!args.message_id) return fail('list_attachments 需要 message_id');
+    var listedAtt = await listMessageAttachments(args.message_id, account, callId);
+    if (listedAtt.err) return fail(listedAtt.err);
+    return { ok: true, result: { attachments: listedAtt.attachments || [] } };
+  }
+
+  if (args.action === 'download_attachment') {
+    if (!args.message_id) return fail('download_attachment 需要 message_id');
+    if (!args.attachment_id) return fail('download_attachment 需要 attachment_id（先 list_attachments）');
+    if (!args.save_deposit || !args.save_deposit.token) {
+      return fail('下载附件需要落盘目录——请主 agent 调 ghost_call 时把目标目录绝对路径放在顶层 save_dir');
+    }
+    var fileName = args.filename;
+    if (!fileName) {
+      var meta = await listMessageAttachments(args.message_id, account, callId);
+      if (meta.err) return fail(meta.err);
+      var found = (meta.attachments || []).filter(function (item) { return item.id === args.attachment_id; })[0];
+      fileName = found && found.name ? found.name : 'attachment';
+    }
+    var dl = await api({
+      url: BASE + '/messages/' + encodeURIComponent(args.message_id) +
+        '/attachments/' + encodeURIComponent(args.attachment_id) + '/$value',
+      account: account,
+      callId: callId,
+      as: 'file',
+      saveTo: { token: args.save_deposit.token, filename: fileName },
+      timeoutMs: 300000,
+    });
+    if (dl.err) return fail(dl.err);
+    var saved = dl.file || {};
+    return {
+      ok: true,
+      result: {
+        downloaded: true,
+        dir_name: args.save_deposit.dir_name,
+        file_name: saved.file_name || fileName,
+        bytes: saved.bytes,
+        note: '已存到 ' + (args.save_deposit.dir_name || '') + '/' + (saved.file_name || fileName),
+      },
+    };
+  }
+
   if (args.action === 'send' || args.action === 'draft') {
     if (!args.to || args.subject === undefined || args.body_text === undefined) {
       return fail(args.action + ' 需要 to / subject / body_text');
     }
     var built = buildMessage(args);
     if (built.err) return fail(built.err);
+    var packed = await collectOutboundAttachments(args, callId);
+    if (packed.err) return fail(packed.err);
+    if (packed.files && packed.files.length) built.ok.attachments = packed.files;
     if (args.action === 'send') {
       var sent = await api({
         url: BASE + '/sendMail',
@@ -445,7 +630,7 @@ async function outlook(args, callId) {
         callId: callId,
       });
       if (sent.err) return fail(sent.err);
-      return { ok: true, result: { sent: true } };
+      return { ok: true, result: { sent: true, attachments: packed.names || [] } };
     }
     var draft = await api({
       url: BASE + '/messages',

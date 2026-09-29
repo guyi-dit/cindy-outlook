@@ -1,13 +1,13 @@
 {
   "name": "Outlook",
-  "description": "Hotmail / Outlook.com / Live を接続し、検索・閲覧・入れ子フォルダー一覧・名前での移動・下書き・送信・削除ができます。送信・削除・移動には明確な指示が必要です。",
-  "whenToUse": "Hotmail / Outlook.com の検索、本文閲覧、子フォルダーへの移動、フォルダー一覧、下書き、送信、削除に使います。先にプラグイン詳細でアカウントを接続してください。",
+  "description": "Hotmail / Outlook.com / Live を接続し、検索・閲覧・移動・下書き・送信・削除、添付の一覧/ダウンロード、ファイル付き送信ができます。送信・削除・移動には明確な指示が必要です。",
+  "whenToUse": "Hotmail の検索、本文閲覧、添付ダウンロード、または渡したファイルを添付して送信するときに使います。先にプラグイン詳細でアカウントを接続してください。",
   "tools": {
     "outlook_accounts": {
-      "description": "接続済み Outlook / Hotmail アカウントと状態を一覧します。"
+      "description": "接続済み Outlook / Hotmail アカウントを一覧します。"
     },
     "outlook": {
-      "description": "Outlook 操作。list_folders は子フォルダーの path/id を返し、move はフォルダー名/path/id で移動します。送信・削除・移動には明確な意図が必要です。"
+      "description": "Outlook 操作。list_attachments / download_attachment（save_dir が必要）。ファイル付き送信は dir 過戸。送信・削除・移動には明確な意図が必要です。"
     }
   }
 }
